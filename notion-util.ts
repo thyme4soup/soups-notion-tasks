@@ -174,7 +174,7 @@ export class NotionUtil {
 
     isTask(file: TFile) {
         const metadata = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-        return metadata != undefined && metadata.tags.contains("task")
+        return metadata != undefined && metadata.tags != undefined && metadata.tags.contains("task")
     }
 
     updateStatus(file: TFile, notion_status: string) {
