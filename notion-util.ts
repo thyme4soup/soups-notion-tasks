@@ -32,14 +32,26 @@ export class NotionUtil {
                 Name: {title: [{text: {content: file.basename,},},],},
                 Tags: {multi_select: [{"name": "michael"}],},
                 Status: {"status": {"name": metadata?.tags.contains("open") ? "Not started" : "Done"}}
-            },
-            children: contentBlocks
+            }
         }
         const res = await requestUrl({
             url: `${NOTION_URL}/pages`,
             method: 'POST',
             headers: this.getHeaders(),
             body: JSON.stringify(body)
+        });
+        const notionId = this.getIdFromUrl(res.json['url']);
+        // Add the body separately
+        const children = {
+            "children": contentBlocks
+        }
+        const response = await requestUrl({
+            url: `${NOTION_URL}/blocks/${notionId}/children`,
+            method: 'PATCH',
+            headers: this.getHeaders(),
+            body: JSON.stringify(children)
+        }).catch(e => {
+            console.log("Error adding note body, will carry on\n", e)
         });
         return res.json['url'];
     }
@@ -61,8 +73,9 @@ export class NotionUtil {
             return;
         }
         const status = page.json['properties']['Status']['status']['name'];
+        const title = page.json['properties']['Name']['title'][0]['plain_text'];
         const new_status = this.updateStatus(file, status);
-        if (status != new_status) {
+        if (status != new_status || title != file.basename) {
             const res = await requestUrl({
                 url: `${NOTION_URL}/pages/${notionId}`,
                 method: 'PATCH',
@@ -73,6 +86,16 @@ export class NotionUtil {
                             "status": {
                                 "name": new_status
                             }
+                        },
+                        "Name": {
+                            "title": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": file.basename
+                                    }
+                                }
+                            ]
                         }
                     }
                 })
@@ -87,7 +110,6 @@ export class NotionUtil {
                 method: 'GET',
                 headers: this.getHeaders()
             })
-            // ToDo: handle notion page deleted/DNE
             // we have to do this sequentially or risk 409s
             for (const block of resOldChildren.json['results']) {
                 const resp = await requestUrl({
@@ -98,6 +120,7 @@ export class NotionUtil {
             }
             // Add new content
             const new_kids = await this.composePage(file);
+            // ToDo: large blocks get 400
             const body = {
                 "children": new_kids
             }
@@ -123,10 +146,9 @@ export class NotionUtil {
             return;
         }
         
-        if (metadata.link != null) {
+        if (metadata.link) {
             const notionId = this.getIdFromUrl(metadata.link);
             if (notionId == undefined) {
-                // ToDo: clear the field and recreate instead
                 console.log("Invalid notion link in " + file.path);
                 return;
             } else {
